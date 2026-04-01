@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # -------------------------
 # CONFIG
@@ -56,23 +56,49 @@ dividendos.columns = ["Fecha", "Dividendo"]
 precios = data.history(period="max")[["Close"]].reset_index()
 precios.columns = ["Fecha", "Precio"]
 
-df = pd.merge(dividendos, precios, on="Fecha", how="left")
+# FIX TIMEZONE
+dividendos["Fecha"] = pd.to_datetime(dividendos["Fecha"]).dt.tz_localize(None)
+precios["Fecha"] = pd.to_datetime(precios["Fecha"]).dt.tz_localize(None)
 
+df = pd.merge(dividendos, precios, on="Fecha", how="left")
 df = df.sort_values("Fecha", ascending=False)
+
+if df.empty:
+    st.warning("No hay dividendos disponibles para esta FIBRA")
+    st.stop()
 
 # -------------------------
 # SCORECARDS (SIN FILTRO)
 # -------------------------
-precio_actual = data.history(period="1d")["Close"].iloc[-1]
+
+precio_hist = data.history(period="5d")
+
+if precio_hist.empty:
+    st.warning("No se pudo obtener el precio actual")
+    st.stop()
+
+# limpiar timezone del precio
+precio_hist.index = pd.to_datetime(precio_hist.index).tz_localize(None)
+
+precio_actual = precio_hist["Close"].iloc[-1]
+price_date = precio_hist.index[-1]
+
+# ultimo pago
 ultimo_pago = df.iloc[0]["Fecha"]
 monto_ultimo_pago = df.iloc[0]["Dividendo"]
 
+# dividendos ultimos 12 meses igual que dashboard 2
+last_year = price_date - timedelta(days=365)
+
 dividendos_12m = dividendos[
-    dividendos["Fecha"] > dividendos["Fecha"].max() - pd.DateOffset(months=12)
+    dividendos["Fecha"] >= last_year
 ]["Dividendo"].sum()
 
 yield_anual = (dividendos_12m / precio_actual) * 100
 
+# -------------------------
+# METRICAS
+# -------------------------
 st.subheader("Resumen de Dividendos")
 
 c1, c2, c3, c4 = st.columns(4)
@@ -90,6 +116,7 @@ df_filtrado = df.copy()
 if len(rango_fechas) == 2:
     inicio = pd.to_datetime(rango_fechas[0])
     fin = pd.to_datetime(rango_fechas[1])
+
     df_filtrado = df_filtrado[
         (df_filtrado["Fecha"] >= inicio) &
         (df_filtrado["Fecha"] <= fin)
@@ -109,16 +136,20 @@ fig = px.line(
     markers=True
 )
 
-# etiqueta solo ultimo punto
-ultima_fecha = df_filtrado["Fecha"].max()
-ultimo_valor = df_filtrado[df_filtrado["Fecha"] == ultima_fecha]["Dividendo"].values[0]
+if not df_filtrado.empty:
 
-fig.add_annotation(
-    x=ultima_fecha,
-    y=ultimo_valor,
-    text=f"${ultimo_valor:.4f}",
-    showarrow=True
-)
+    ultima_fecha = df_filtrado["Fecha"].max()
+
+    ultimo_valor = df_filtrado[
+        df_filtrado["Fecha"] == ultima_fecha
+    ]["Dividendo"].values[0]
+
+    fig.add_annotation(
+        x=ultima_fecha,
+        y=ultimo_valor,
+        text=f"${ultimo_valor:.4f}",
+        showarrow=True
+    )
 
 st.plotly_chart(fig, use_container_width=True)
 
@@ -127,10 +158,15 @@ st.plotly_chart(fig, use_container_width=True)
 # -------------------------
 st.subheader("Tabla de Dividendos")
 
-tabla = df_filtrado.sort_values("Fecha", ascending=False)
+tabla = df_filtrado.sort_values("Fecha", ascending=False).copy()
 
-tabla["Fecha"] = tabla["Fecha"].dt.strftime("%Y-%m-%d")
-tabla["Dividendo"] = tabla["Dividendo"].round(4)
-tabla["Precio"] = tabla["Precio"].round(2)
+if not tabla.empty:
 
-st.dataframe(tabla, use_container_width=True)
+    tabla["Fecha"] = tabla["Fecha"].dt.strftime("%Y-%m-%d")
+    tabla["Dividendo"] = tabla["Dividendo"].round(4)
+    tabla["Precio"] = tabla["Precio"].round(2)
+
+    st.dataframe(tabla, use_container_width=True)
+
+else:
+    st.warning("No hay datos en el rango seleccionado")
