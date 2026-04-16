@@ -13,7 +13,7 @@ FIBRAS = [
     "DANHOS13.MX",
     "FIBRAMQ12.MX",
     "FSHOP13.MX",
-    "NEXT25.MX",
+    ##"NEXT25.MX",
     "FINN13.MX"
 ]
 

@@ -1,8 +1,7 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 # -------------------------
 # CONFIG
@@ -26,6 +25,16 @@ fibras = {
 }
 
 # -------------------------
+# CARGA DE CSV
+# -------------------------
+dividendos_all = pd.read_csv("data/dividendos.csv")
+precios_all = pd.read_csv("data/precios.csv")
+
+# convertir fechas
+dividendos_all["Fecha"] = pd.to_datetime(dividendos_all["Fecha"])
+precios_all["Fecha"] = pd.to_datetime(precios_all["Fecha"])
+
+# -------------------------
 # FILTROS
 # -------------------------
 st.subheader("Filtros")
@@ -39,28 +48,25 @@ with col1:
     )
 
 with col2:
-    rango_fechas = st.date_input(
-        "Rango de fechas",
-        []
-    )
+    rango_fechas = st.date_input("Rango de fechas", [])
 
 ticker = fibras[fibra_seleccionada]
-data = yf.Ticker(ticker)
 
 # -------------------------
-# DATOS
+# FILTRAR DATA
 # -------------------------
-dividendos = data.dividends.reset_index()
-dividendos.columns = ["Fecha", "Dividendo"]
+dividendos = dividendos_all[dividendos_all["ticker"] == ticker].copy()
+precios = precios_all[precios_all["ticker"] == ticker].copy()
 
-precios = data.history(period="max")[["Close"]].reset_index()
-precios.columns = ["Fecha", "Precio"]
-
-# FIX TIMEZONE
-dividendos["Fecha"] = pd.to_datetime(dividendos["Fecha"]).dt.tz_localize(None)
-precios["Fecha"] = pd.to_datetime(precios["Fecha"]).dt.tz_localize(None)
-
+# -------------------------
+# MERGE
+# -------------------------
 df = pd.merge(dividendos, precios, on="Fecha", how="left")
+
+# 🔥 ELIMINAR DUPLICADOS DE TICKER
+df = df.drop(columns=["ticker_y"])
+df = df.rename(columns={"ticker_x": "ticker"})
+
 df = df.sort_values("Fecha", ascending=False)
 
 if df.empty:
@@ -68,33 +74,29 @@ if df.empty:
     st.stop()
 
 # -------------------------
-# SCORECARDS (SIN FILTRO)
+# SCORECARDS
 # -------------------------
-
-precio_hist = data.history(period="5d")
+precio_hist = precios.sort_values("Fecha").tail(5).set_index("Fecha")
 
 if precio_hist.empty:
     st.warning("No se pudo obtener el precio actual")
     st.stop()
 
-# limpiar timezone del precio
-precio_hist.index = pd.to_datetime(precio_hist.index).tz_localize(None)
-
-precio_actual = precio_hist["Close"].iloc[-1]
+precio_actual = precio_hist["Precio"].iloc[-1]
 price_date = precio_hist.index[-1]
 
 # ultimo pago
 ultimo_pago = df.iloc[0]["Fecha"]
 monto_ultimo_pago = df.iloc[0]["Dividendo"]
 
-# dividendos ultimos 12 meses igual que dashboard 2
+# dividendos últimos 12 meses
 last_year = price_date - timedelta(days=365)
 
 dividendos_12m = dividendos[
     dividendos["Fecha"] >= last_year
 ]["Dividendo"].sum()
 
-yield_anual = (dividendos_12m / precio_actual) * 100
+yield_anual = (dividendos_12m / precio_actual) * 100 if precio_actual != 0 else 0
 
 # -------------------------
 # METRICAS
@@ -125,7 +127,7 @@ if len(rango_fechas) == 2:
 df_filtrado = df_filtrado.sort_values("Fecha")
 
 # -------------------------
-# TRENDLINE DIVIDENDOS
+# GRÁFICA
 # -------------------------
 st.subheader("Histórico de Dividendos")
 
@@ -137,7 +139,6 @@ fig = px.line(
 )
 
 if not df_filtrado.empty:
-
     ultima_fecha = df_filtrado["Fecha"].max()
 
     ultimo_valor = df_filtrado[
@@ -161,12 +162,13 @@ st.subheader("Tabla de Dividendos")
 tabla = df_filtrado.sort_values("Fecha", ascending=False).copy()
 
 if not tabla.empty:
-
     tabla["Fecha"] = tabla["Fecha"].dt.strftime("%Y-%m-%d")
     tabla["Dividendo"] = tabla["Dividendo"].round(4)
     tabla["Precio"] = tabla["Precio"].round(2)
 
-    st.dataframe(tabla, use_container_width=True)
+    # 🔥 OPCIONAL: ocultar ticker si no lo quieres ver
+    tabla = tabla.drop(columns=["ticker"])
 
+    st.dataframe(tabla, use_container_width=True)
 else:
     st.warning("No hay datos en el rango seleccionado")
