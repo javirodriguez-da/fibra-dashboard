@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import timedelta
+import os
+from datetime import datetime
 
 # -------------------------
 # CONFIG
@@ -9,6 +11,35 @@ from datetime import timedelta
 st.set_page_config(layout="wide")
 
 st.title("FIBRA ANALYTICS | Reporte de Dividendos | Fuente Yahoo Finance")
+
+# -------------------------
+# PATHS (COMPATIBLE LOCAL + CLOUD)
+# -------------------------
+BASE_DIR = os.getcwd()
+
+dividendos_path = os.path.join(BASE_DIR, "data", "dividendos.csv")
+precios_path = os.path.join(BASE_DIR, "data", "precios.csv")
+
+# -------------------------
+# CACHE DATA
+# -------------------------
+@st.cache_data
+def load_data():
+    dividendos = pd.read_csv(dividendos_path)
+    precios = pd.read_csv(precios_path)
+
+    dividendos["Fecha"] = pd.to_datetime(dividendos["Fecha"])
+    precios["Fecha"] = pd.to_datetime(precios["Fecha"])
+
+    return dividendos, precios
+
+dividendos_all, precios_all = load_data()
+
+# -------------------------
+# ÚLTIMA ACTUALIZACIÓN
+# -------------------------
+last_modified = datetime.fromtimestamp(os.path.getmtime(dividendos_path))
+st.caption(f"Última actualización: {last_modified.strftime('%Y-%m-%d %H:%M')}")
 
 # -------------------------
 # FIBRAS DISPONIBLES
@@ -23,16 +54,6 @@ fibras = {
     "Prologis Fibra": "FIBRAPL14.MX",
     "Fibra Nova": "FNOVA17.MX"
 }
-
-# -------------------------
-# CARGA DE CSV
-# -------------------------
-dividendos_all = pd.read_csv("data/dividendos.csv")
-precios_all = pd.read_csv("data/precios.csv")
-
-# convertir fechas
-dividendos_all["Fecha"] = pd.to_datetime(dividendos_all["Fecha"])
-precios_all["Fecha"] = pd.to_datetime(precios_all["Fecha"])
 
 # -------------------------
 # FILTROS
@@ -63,7 +84,6 @@ precios = precios_all[precios_all["ticker"] == ticker].copy()
 # -------------------------
 df = pd.merge(dividendos, precios, on="Fecha", how="left")
 
-# 🔥 ELIMINAR DUPLICADOS DE TICKER
 df = df.drop(columns=["ticker_y"])
 df = df.rename(columns={"ticker_x": "ticker"})
 
@@ -85,11 +105,9 @@ if precio_hist.empty:
 precio_actual = precio_hist["Precio"].iloc[-1]
 price_date = precio_hist.index[-1]
 
-# ultimo pago
 ultimo_pago = df.iloc[0]["Fecha"]
 monto_ultimo_pago = df.iloc[0]["Dividendo"]
 
-# dividendos últimos 12 meses
 last_year = price_date - timedelta(days=365)
 
 dividendos_12m = dividendos[
@@ -152,7 +170,7 @@ if not df_filtrado.empty:
         showarrow=True
     )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")
 
 # -------------------------
 # TABLA
@@ -166,7 +184,6 @@ if not tabla.empty:
     tabla["Dividendo"] = tabla["Dividendo"].round(4)
     tabla["Precio"] = tabla["Precio"].round(2)
 
-    # 🔥 OPCIONAL: ocultar ticker si no lo quieres ver
     tabla = tabla.drop(columns=["ticker"])
 
     st.dataframe(tabla, use_container_width=True)
