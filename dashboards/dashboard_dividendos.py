@@ -25,8 +25,8 @@ precios_path = os.path.join(BASE_DIR, "data", "precios.csv")
 # -------------------------
 @st.cache_data
 def load_data():
-    dividendos = pd.read_csv(dividendos_path)
-    precios = pd.read_csv(precios_path)
+    dividendos = pd.read_csv("data/dividendos.csv")
+    precios = pd.read_csv("data/precios.csv")
 
     dividendos["Fecha"] = pd.to_datetime(dividendos["Fecha"])
     precios["Fecha"] = pd.to_datetime(precios["Fecha"])
