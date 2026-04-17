@@ -7,34 +7,26 @@ from datetime import timedelta
 # CONFIG
 # -------------------------
 st.set_page_config(layout="wide")
-
 st.title("FIBRA ANALYTICS | Reporte de Dividendos")
 
-st.write("🚀 App cargando correctamente...")
-
 # -------------------------
-# CARGA DE CSV (CLEAN)
+# CARGA DE CSV
 # -------------------------
 try:
     dividendos_all = pd.read_csv("data/dividendos.csv")
     precios_all = pd.read_csv("data/precios.csv")
-
-    st.write("✅ CSV cargados correctamente")
-
 except Exception as e:
-    st.error(f"❌ Error cargando CSV: {e}")
+    st.error(f"Error cargando CSV: {e}")
     st.stop()
 
 # -------------------------
-# LIMPIEZA
+# LIMPIEZA DE FECHAS
 # -------------------------
 try:
     dividendos_all["Fecha"] = pd.to_datetime(dividendos_all["Fecha"])
     precios_all["Fecha"] = pd.to_datetime(precios_all["Fecha"])
-    st.write("✅ Fechas convertidas")
-
 except Exception as e:
-    st.error(f"❌ Error en fechas: {e}")
+    st.error(f"Error en fechas: {e}")
     st.stop()
 
 # -------------------------
@@ -51,8 +43,9 @@ fibras = {
     "Fibra Nova": "FNOVA17.MX"
 }
 
-st.subheader("Filtros")
-
+# -------------------------
+# FILTROS
+# -------------------------
 col1, col2 = st.columns(2)
 
 with col1:
@@ -67,7 +60,7 @@ with col2:
 ticker = fibras[fibra_seleccionada]
 
 # -------------------------
-# FILTRAR
+# FILTRADO
 # -------------------------
 dividendos = dividendos_all[dividendos_all["ticker"] == ticker].copy()
 precios = precios_all[precios_all["ticker"] == ticker].copy()
@@ -94,26 +87,50 @@ precio_actual = precios.sort_values("Fecha")["Precio"].iloc[-1]
 ultimo_pago = df.iloc[0]["Fecha"]
 monto_ultimo_pago = df.iloc[0]["Dividendo"]
 
-last_year = precio_actual
+# -------------------------
+# YIELD TRAILING 365 DÍAS EXACTO
+# -------------------------
 
-dividendos_12m = dividendos["Dividendo"].sum()
+# asegurar tipo fecha
+dividendos["Fecha"] = pd.to_datetime(dividendos["Fecha"])
+precios["Fecha"] = pd.to_datetime(precios["Fecha"])
 
-yield_anual = (dividendos_12m / precio_actual) * 100 if precio_actual != 0 else 0
+# fecha de referencia (último dato disponible)
+end_date = precios["Fecha"].max()
+start_date = end_date - pd.Timedelta(days=365)
+
+# filtrar dividendos dentro de ventana exacta
+dividendos_ttm = dividendos[
+    (dividendos["Fecha"] > start_date) &
+    (dividendos["Fecha"] <= end_date)
+]
+
+# suma real TTM
+ttm_dividends = dividendos_ttm["Dividendo"].sum()
+
+# precio más reciente
+precio_actual = precios.sort_values("Fecha")["Precio"].iloc[-1]
+
+# yield final
+yield_anual = (
+    (ttm_dividends / precio_actual) * 100
+    if precio_actual > 0 else 0
+)
 
 # -------------------------
-# METRICAS
+# SCORECARDS
 # -------------------------
-st.subheader("Resumen")
+st.subheader("Resumen de Dividendos")
 
 c1, c2, c3, c4 = st.columns(4)
 
 c1.metric("Precio Actual", f"${precio_actual:.2f}")
-c2.metric("Último pago", ultimo_pago.strftime("%Y-%m-%d"))
-c3.metric("Monto último pago", f"${monto_ultimo_pago:.4f}")
-c4.metric("Yield", f"{yield_anual:.2f}%")
+c2.metric("Último Pago", ultimo_pago.strftime("%Y-%m-%d"))
+c3.metric("Monto Último Pago", f"${monto_ultimo_pago:.4f}")
+c4.metric("Yield Anualizado", f"{yield_anual:.2f}%")
 
 # -------------------------
-# FILTRO FECHAS
+# FILTRO DE FECHAS
 # -------------------------
 df_filtrado = df.copy()
 
@@ -126,24 +143,48 @@ if len(rango_fechas) == 2:
         (df_filtrado["Fecha"] <= fin)
     ]
 
+df_filtrado = df_filtrado.sort_values("Fecha")
+
 # -------------------------
 # GRÁFICA
 # -------------------------
-st.subheader("Histórico")
+st.subheader("Histórico de Dividendos")
 
-fig = px.line(df_filtrado, x="Fecha", y="Dividendo", markers=True)
+fig = px.line(
+    df_filtrado,
+    x="Fecha",
+    y="Dividendo",
+    markers=True
+)
 
 st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------
-# TABLA
+# TABLA LIMPIA
 # -------------------------
-st.subheader("Tabla")
+st.subheader("Tabla de Dividendos")
 
 tabla = df_filtrado.copy()
+
+# -------------------------
+# ORDENAR (más reciente primero)s
+# -------------------------
+tabla = tabla.sort_values("Fecha", ascending=False)
+
+# -------------------------
+# eliminar columnas ticker si existen
+# -------------------------
+tabla = tabla.loc[:, ~tabla.columns.str.contains("ticker")]
+
+# -------------------------
+# formato
+# -------------------------
 tabla["Fecha"] = tabla["Fecha"].dt.strftime("%Y-%m-%d")
 
-if "ticker" in tabla.columns:
-    tabla = tabla.drop(columns=["ticker"])
+if "Dividendo" in tabla.columns:
+    tabla["Dividendo"] = tabla["Dividendo"].round(4)
+
+if "Precio" in tabla.columns:
+    tabla["Precio"] = tabla["Precio"].round(2)
 
 st.dataframe(tabla, use_container_width=True)
