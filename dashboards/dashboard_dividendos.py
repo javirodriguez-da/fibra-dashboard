@@ -10,23 +10,11 @@ st.set_page_config(layout="wide")
 
 st.title("FIBRA ANALYTICS | Reporte de Dividendos")
 
-# -------------------------
-# DEBUG INICIAL
-# -------------------------
 st.write("🚀 App cargando correctamente...")
 
 # -------------------------
-# CARGA DE CSV (SIN CACHE)
+# CARGA DE CSV (CLEAN)
 # -------------------------
-try:
-    dividendos_all = pd.read_csv("data/dividendos.csv")
-    precios_all = pd.read_csv("data/precios.csv")
-
-@st.cache_data
-def load_data():
-    dividendos = pd.read_csv("data/dividendos.csv")
-    precios = pd.read_csv("data/precios.csv")
-
 try:
     dividendos_all = pd.read_csv("data/dividendos.csv")
     precios_all = pd.read_csv("data/precios.csv")
@@ -43,7 +31,6 @@ except Exception as e:
 try:
     dividendos_all["Fecha"] = pd.to_datetime(dividendos_all["Fecha"])
     precios_all["Fecha"] = pd.to_datetime(precios_all["Fecha"])
-
     st.write("✅ Fechas convertidas")
 
 except Exception as e:
@@ -64,9 +51,6 @@ fibras = {
     "Fibra Nova": "FNOVA17.MX"
 }
 
-# -------------------------
-# FILTROS
-# -------------------------
 st.subheader("Filtros")
 
 col1, col2 = st.columns(2)
@@ -88,25 +72,14 @@ ticker = fibras[fibra_seleccionada]
 dividendos = dividendos_all[dividendos_all["ticker"] == ticker].copy()
 precios = precios_all[precios_all["ticker"] == ticker].copy()
 
-st.write(f"📊 Registros dividendos: {len(dividendos)}")
-st.write(f"📊 Registros precios: {len(precios)}")
+if dividendos.empty or precios.empty:
+    st.warning("No hay datos para esta FIBRA")
+    st.stop()
 
 # -------------------------
 # MERGE
 # -------------------------
-try:
-    df = pd.merge(dividendos, precios, on="Fecha", how="left")
-
-    if "ticker_x" in df.columns:
-        df = df.rename(columns={"ticker_x": "ticker"})
-        df = df.drop(columns=["ticker_y"])
-
-    st.write("✅ Merge exitoso")
-
-except Exception as e:
-    st.error(f"❌ Error en merge: {e}")
-    st.stop()
-
+df = pd.merge(dividendos, precios, on="Fecha", how="left")
 df = df.sort_values("Fecha", ascending=False)
 
 if df.empty:
@@ -114,42 +87,30 @@ if df.empty:
     st.stop()
 
 # -------------------------
-# SCORECARDS
+# MÉTRICAS
 # -------------------------
-try:
-    precio_hist = precios.sort_values("Fecha").tail(5).set_index("Fecha")
+precio_actual = precios.sort_values("Fecha")["Precio"].iloc[-1]
 
-    precio_actual = precio_hist["Precio"].iloc[-1]
-    price_date = precio_hist.index[-1]
+ultimo_pago = df.iloc[0]["Fecha"]
+monto_ultimo_pago = df.iloc[0]["Dividendo"]
 
-    ultimo_pago = df.iloc[0]["Fecha"]
-    monto_ultimo_pago = df.iloc[0]["Dividendo"]
+last_year = precio_actual
 
-    last_year = price_date - timedelta(days=365)
+dividendos_12m = dividendos["Dividendo"].sum()
 
-    dividendos_12m = dividendos[
-        dividendos["Fecha"] >= last_year
-    ]["Dividendo"].sum()
-
-    yield_anual = (dividendos_12m / precio_actual) * 100 if precio_actual != 0 else 0
-
-    st.write("✅ Métricas calculadas")
-
-except Exception as e:
-    st.error(f"❌ Error en métricas: {e}")
-    st.stop()
+yield_anual = (dividendos_12m / precio_actual) * 100 if precio_actual != 0 else 0
 
 # -------------------------
 # METRICAS
 # -------------------------
-st.subheader("Resumen de Dividendos")
+st.subheader("Resumen")
 
 c1, c2, c3, c4 = st.columns(4)
 
 c1.metric("Precio Actual", f"${precio_actual:.2f}")
-c2.metric("Fecha Último Pago", ultimo_pago.strftime("%Y-%m-%d"))
-c3.metric("Monto Último Pago", f"${monto_ultimo_pago:.4f}")
-c4.metric("Yield Anualizado", f"{yield_anual:.2f}%")
+c2.metric("Último pago", ultimo_pago.strftime("%Y-%m-%d"))
+c3.metric("Monto último pago", f"${monto_ultimo_pago:.4f}")
+c4.metric("Yield", f"{yield_anual:.2f}%")
 
 # -------------------------
 # FILTRO FECHAS
@@ -165,41 +126,24 @@ if len(rango_fechas) == 2:
         (df_filtrado["Fecha"] <= fin)
     ]
 
-df_filtrado = df_filtrado.sort_values("Fecha")
-
 # -------------------------
 # GRÁFICA
 # -------------------------
-st.subheader("Histórico de Dividendos")
+st.subheader("Histórico")
 
-fig = px.line(
-    df_filtrado,
-    x="Fecha",
-    y="Dividendo",
-    markers=True
-)
+fig = px.line(df_filtrado, x="Fecha", y="Dividendo", markers=True)
 
-st.plotly_chart(fig, width="stretch")
+st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------
 # TABLA
 # -------------------------
 st.subheader("Tabla")
 
-tabla = df_filtrado.sort_values("Fecha", ascending=False).copy()
-
+tabla = df_filtrado.copy()
 tabla["Fecha"] = tabla["Fecha"].dt.strftime("%Y-%m-%d")
-tabla["Dividendo"] = tabla["Dividendo"].round(4)
-tabla["Precio"] = tabla["Precio"].round(2)
 
 if "ticker" in tabla.columns:
     tabla = tabla.drop(columns=["ticker"])
 
 st.dataframe(tabla, use_container_width=True)
-
-    st.dataframe(tabla, use_container_width=True)
-else:
-    st.warning("No hay datos en el rango seleccionado")
-
-st.dataframe(tabla, use_container_width=True)
-
