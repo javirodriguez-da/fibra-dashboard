@@ -22,6 +22,15 @@ try:
     dividendos_all = pd.read_csv("data/dividendos.csv")
     precios_all = pd.read_csv("data/precios.csv")
 
+@st.cache_data
+def load_data():
+    dividendos = pd.read_csv("data/dividendos.csv")
+    precios = pd.read_csv("data/precios.csv")
+
+try:
+    dividendos_all = pd.read_csv("data/dividendos.csv")
+    precios_all = pd.read_csv("data/precios.csv")
+
     st.write("✅ CSV cargados correctamente")
 
 except Exception as e:
@@ -187,3 +196,10 @@ if "ticker" in tabla.columns:
     tabla = tabla.drop(columns=["ticker"])
 
 st.dataframe(tabla, use_container_width=True)
+
+    st.dataframe(tabla, use_container_width=True)
+else:
+    st.warning("No hay datos en el rango seleccionado")
+
+st.dataframe(tabla, use_container_width=True)
+
